@@ -1,0 +1,67 @@
+# ========== PYTHON & ENVIRONMENTS ==========
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.tmp
+*.egg-info/
+.env
+.env.*
+venv/
+.venv/
+urbanecho_venv/
+.envrc
+
+# ========== EDITOR & OS FILES ==========
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ========== GIT & NOTEBOOK CACHE ==========
+.git/
+.gitignore
+.ipynb_checkpoints/
+*.ipynb
+
+# ========== DATASETS & AUDIO FILES ==========
+UrbanSound8K/
+urbansound8k/
+*.wav
+*.mp3
+*.flac
+*.zip
+*.tar.gz
+
+# ========== MODEL & CHECKPOINT FILES ==========
+*.h5
+*.hdf5
+*.pkl
+*.pt
+*.ckpt
+*.onnx
+*.tflite
+
+# ========== FIREBASE & CREDENTIALS ==========
+!serviceAccount.json  # Keep this file
+
+# ========== MISC ==========
+*.csv
+*.json
+!serviceAccount.json
+*.db
+*.sqlite3
+*.bak
+*.cache/
+node_modules/
+*.bat
+*.sh
+
+# ========== BUILD & DIST FILES ==========
+build/
+dist/
+*.egg-info/
+*.spec
+Dockerfile~
+requirements.txt~

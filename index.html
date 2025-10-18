@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>UrbanEcho — Live Noise Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; }
+    .topbar { padding: 12px; background: #0d6efd; color: white; }
+    .container { padding: 12px; display:flex; gap:12px; }
+    #map { height: 70vh; flex: 1; }
+    #controls { width: 320px; }
+    .status { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="topbar"><strong>UrbanEcho</strong> — Live Community Noise Map</div>
+  <div class="container">
+    <div id="controls">
+      <h3>Upload a short audio clip</h3>
+      <input id="audioFile" type="file" accept=".wav, .mp3" />
+      <button id="uploadBtn">Upload</button>
+      <div class="status" id="status"></div>
+      <hr />
+      <div>Map centers to your location on load (if allowed).</div>
+      <div>Data refreshes every 5 seconds.</div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- leaflet.heat plugin -->
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    let userLat = 20.5937, userLon = 78.9629; // fallback center (India)
+    let map, heatLayer;
+    let markerLayer = null;
+    const plottedTimestamps = new Set(); // avoid duplicate markers
+
+    // Initialize map after getting user location (or fallback)
+    function initMap(lat, lon) {
+      map = L.map('map').setView([lat, lon], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      // create marker layer once
+      markerLayer = L.layerGroup().addTo(map);
+
+      // initial data fetch
+      fetchDataAndUpdate();
+      // poll every 5 seconds
+      setInterval(fetchDataAndUpdate, 5000);
+    }
+
+    async function fetchDataAndUpdate() {
+      try {
+        const resp = await fetch('/data?limit=500');
+        if (!resp.ok) throw new Error("data fetch failed");
+        const pts = await resp.json();
+
+        // Add circle markers for each point, but skip if already plotted
+        pts.forEach(p => {
+          if (!p.lat || !p.lon) return;
+          // use timestamp if provided, otherwise fallback to coordinate+db key
+          const key = p.timestamp ? String(p.timestamp) : `${p.lat},${p.lon},${p.noise_db}`;
+          if (plottedTimestamps.has(key)) return;
+          plottedTimestamps.add(key);
+
+          L.circleMarker([p.lat, p.lon], {
+            radius: 5,
+            color: p.noise_db > 70 ? 'red' : 'green',
+            fillColor: p.noise_db > 70 ? 'red' : 'green',
+            fillOpacity: 0.4
+          })
+          .bindPopup(`Noise: ${p.label}<br>Level: ${p.noise_db} dB<br>Time: ${p.timestamp}`)
+          .addTo(markerLayer);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Initialize map on page load (use geolocation if allowed, otherwise fallback)
+    document.addEventListener('DOMContentLoaded', () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            userLat = pos.coords.latitude;
+            userLon = pos.coords.longitude;
+            initMap(userLat, userLon);
+          },
+          (err) => {
+            // permission denied or timeout -> use fallback
+            initMap(userLat, userLon);
+          },
+          { timeout: 10000 }
+        );
+      } else {
+        initMap(userLat, userLon);
+      }
+    });
+
+    // Upload handler
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      const input = document.getElementById('audioFile');
+      if (!input.files || input.files.length === 0) {
+        statusEl.innerText = "Please choose an audio file first.";
+        return;
+      }
+      const fd = new FormData();
+      fd.append('audio_file', input.files[0]);
+      // append geolocation if available
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(async (pos) => {
+          fd.append('lat', pos.coords.latitude);
+          fd.append('lon', pos.coords.longitude);
+          await sendUpload(fd);
+        }, async (err) => {
+          // fallback to map center
+          fd.append('lat', userLat);
+          fd.append('lon', userLon);
+          await sendUpload(fd);
+        }, {timeout: 10000});
+      } else {
+        fd.append('lat', userLat);
+        fd.append('lon', userLon);
+        await sendUpload(fd);
+      }
+    });
+
+    async function sendUpload(fd) {
+      statusEl.innerText = "Uploading and analyzing...";
+      try {
+        const resp = await fetch('/upload', { method: 'POST', body: fd });
+        const data = await resp.json();
+        if (!resp.ok) {
+          statusEl.innerText = "Upload failed: " + (data.error || resp.statusText);
+        } else {
+          statusEl.innerText = `Predicted: ${data.label} (${data.confidence}%). Estimated dB: ${data.noise_db}`;
+          // fetch latest to show the new point quickly
+          fetchDataAndUpdate();
+        }
+      } catch (e) {
+        console.error(e);
+        statusEl.innerText = "Upload error.";
+      }
+    }
+  </script>
+</body>
+</html>
